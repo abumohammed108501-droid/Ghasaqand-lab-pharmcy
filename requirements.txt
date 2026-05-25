@@ -4,5 +4,3 @@ plotly
 reportlab
 arabic-reshaper
 python-bidi
-streamlit-webrtc
-av
