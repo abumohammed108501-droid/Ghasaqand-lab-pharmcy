@@ -2,9 +2,14 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import datetime
+from fpdf import FPDF
 
 # --- إعدادات النظام ---
-st.set_page_config(page_title="نظام غسق OS", layout="wide")
+st.set_page_config(page_title="نظام غسق", layout="wide")
+
+# --- تهيئة الحالة ---
+if 'show_invoice' not in st.session_state:
+    st.session_state.show_invoice = False
 
 # --- تهيئة قاعدة البيانات ---
 def init_db():
@@ -44,18 +49,30 @@ def process_sale(dept, item, qty):
                   (time, dept, item, qty, price))
         conn.commit()
         conn.close()
-        return True, "تم البيع بنجاح!"
+        return True, "تم البيع بنجاح!", price
     else:
         conn.close()
-        return False, "عذراً: الصنف غير موجود أو الكمية غير كافية."
+        return False, "عذراً: الصنف غير موجود أو الكمية غير كافية.", 0
+
+def generate_pdf(item, qty, price):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(200, 10, txt="فاتورة صيدلية غسق", ln=True, align='C')
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=f"الصنف: {item}", ln=True)
+    pdf.cell(200, 10, txt=f"الكمية: {qty}", ln=True)
+    pdf.cell(200, 10, txt=f"الإجمالي: {price * qty} ريال", ln=True)
+    pdf.cell(200, 10, txt=f"التاريخ: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True)
+    return pdf.output(dest='S').encode('latin-1')
 
 # --- واجهة المستخدم ---
-st.sidebar.title("🛠️ لوحة تحكم غسق")
-# تم تبسيط أسماء الصفحات لتجنب الأخطاء
-page = st.sidebar.radio("الخدمات", ["المبيعات", "نقطة البيع", "المخزون"])
+st.sidebar.title("لوحة تحكم غسق")
+# نستخدم نصوصاً بسيطة جداً هنا لمنع أي خطأ
+page = st.sidebar.radio("الخدمات", ["المبيعات اليومية", "نقطة البيع", "إدارة المخزون"])
 
-if page == "المبيعات":
-    st.title("📊 حركة المبيعات")
+if page == "المبيعات اليومية":
+    st.title("📊 حركة المبيعات اليومية")
     conn = sqlite3.connect('ghasaq_os.db')
     df = pd.read_sql_query("SELECT * FROM sales ORDER BY id DESC", conn)
     conn.close()
@@ -66,14 +83,15 @@ elif page == "نقطة البيع":
     item = st.text_input("اسم الصنف")
     qty = st.number_input("الكمية", 1)
     if st.button("إتمام البيع"):
-        success, msg = process_sale("صيدلية", item, qty)
-        if success: 
+        success, msg, price = process_sale("صيدلية", item, qty)
+        if success:
             st.success(msg)
-            st.rerun()
-        else: 
+            pdf_data = generate_pdf(item, qty, price)
+            st.download_button("📥 تحميل الفاتورة (PDF)", pdf_data, "invoice.pdf", "application/pdf")
+        else:
             st.error(msg)
 
-elif page == "المخزون":
+elif page == "إدارة المخزون":
     st.title("📦 إدارة المخزون")
     with st.form("inventory_form"):
         name = st.text_input("اسم الصنف")
@@ -81,7 +99,7 @@ elif page == "المخزون":
         price = st.number_input("سعر الوحدة")
         if st.form_submit_button("حفظ في المخزن"):
             add_to_inventory(name, qty, price)
-            st.success("تم تحديث المخزون!")
+            st.success("تم التحديث!")
     
     st.subheader("المخزون الحالي")
     conn = sqlite3.connect('ghasaq_os.db')
