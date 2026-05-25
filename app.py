@@ -1,70 +1,55 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import os
 from datetime import datetime
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+import os
 
-# --- 1. إعدادات الصفحة والواجهة الطبية ---
-st.set_page_config(page_title="نظام غسق الذهبي", layout="wide")
-st.markdown("""
-    <style>
-    .stApp { background-color: #F8FAFC; }
-    .metric-card { background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-right: 5px solid #0EA5E9; }
-    h1 { color: #1E3A8A; }
-    </style>
-""", unsafe_allow_html=True)
+# 1. إعدادات الصفحة
+st.set_page_config(page_title="نظام غسق الطبي - النسخة الذهبية", layout="wide")
 
-# --- 2. إدارة قاعدة البيانات (CSV) ---
+# 2. ملف البيانات
 DB_FILE = 'ghasaq_data.csv'
 if not os.path.exists(DB_FILE):
-    pd.DataFrame(columns=['التاريخ', 'الصنف', 'الكمية', 'السعر', 'الإجمالي']).to_csv(DB_FILE, index=False)
+    pd.DataFrame(columns=['الباركود', 'الصنف', 'نوع_الوحدة', 'السعر', 'الكمية']).to_csv(DB_FILE, index=False)
 
-def load_data():
-    return pd.read_csv(DB_FILE)
+# 3. وظيفة إنشاء PDF (الفاتورة)
+def generate_pdf(item, qty, total):
+    file_name = f"فاتورة_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    c = canvas.Canvas(file_name, pagesize=letter)
+    c.drawString(100, 750, f"نظام غسق الطبي - فاتورة بيع")
+    c.drawString(100, 730, f"الصنف: {item}")
+    c.drawString(100, 710, f"الكمية: {qty}")
+    c.drawString(100, 690, f"الإجمالي: {total}")
+    c.save()
+    return file_name
 
-# --- 3. الواجهة التفاعلية ---
+# 4. الواجهة البرمجية
 st.title("💊 نظام غسق الطبي - النسخة الذهبية")
-tab1, tab2, tab3 = st.tabs(["🛒 نقطة البيع (POS)", "📦 إدارة المخزون", "📊 لوحة التحليل الذكي"])
 
-# تبويب البيع
-with tab1:
-    st.subheader("إتمام عملية بيع جديدة")
-    col1, col2 = st.columns(2)
-    item = col1.text_input("اسم الصنف:")
-    qty = col2.number_input("الكمية:", min_value=1)
-    price = col1.number_input("سعر الوحدة:", min_value=0.0)
-    
-    if st.button("حفظ الفاتورة"):
-        new_row = {'التاريخ': datetime.now().strftime("%Y-%m-%d"), 'الصنف': item, 'الكمية': qty, 'السعر': price, 'الإجمالي': qty * price}
-        pd.DataFrame([new_row]).to_csv(DB_FILE, mode='a', header=False, index=False)
-        st.success("تم تسجيل الفاتورة بنجاح!")
+# تبويب إدارة المخزون (الباركود + كرتون/حبة)
+with st.expander("📦 إضافة صنف للمخزون (الباركود والوحدة)"):
+    name = st.text_input("اسم الصنف")
+    barcode = st.text_input("الباركود")
+    unit_type = st.radio("نوع الوحدة:", ["حبة", "كرتون"])
+    price = st.number_input("السعر")
+    qty = st.number_input("الكمية")
+    if st.button("حفظ الصنف"):
+        new_item = {'الباركود': barcode, 'الصنف': name, 'نوع_الوحدة': unit_type, 'السعر': price, 'الكمية': qty}
+        pd.DataFrame([new_item]).to_csv(DB_FILE, mode='a', header=False, index=False)
+        st.success("تم حفظ الصنف مع الباركود والوحدة.")
 
-# تبويب المخزون
-with tab2:
-    st.subheader("الأصناف والمخزون")
-    st.info("نظام تتبع المخزون اللحظي مفعل.")
-    st.dataframe(load_data(), use_container_width=True)
+# تبويب البيع (نقطة البيع)
+st.subheader("🛒 نقطة البيع (POS)")
+df = pd.read_csv(DB_FILE)
+selected_item = st.selectbox("اختر الصنف من المخزون:", df['الصنف'].unique())
+item_data = df[df['الصنف'] == selected_item].iloc[0]
+st.write(f"الوحدة المتاحة: {item_data['نوع_الوحدة']} - السعر: {item_data['السعر']}")
 
-# تبويب التحليل (النسخة الذهبية)
-with tab3:
-    st.subheader("تحليلات الأداء (السنوي والشهري)")
-    df = load_data()
-    if not df.empty:
-        df['التاريخ'] = pd.to_datetime(df['التاريخ'])
-        
-        # تحليل أفضل الشهور
-        df['الشهر'] = df['التاريخ'].dt.strftime('%Y-%m')
-        monthly_sales = df.groupby('الشهر')['الإجمالي'].sum().reset_index()
-        
-        fig = px.bar(monthly_sales, x='الشهر', y='الإجمالي', title="إجمالي المبيعات حسب الشهر", color='الإجمالي', color_continuous_scale='Blues')
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # أفضل صنف
-        top_item = df.groupby('الصنف')['الكمية'].sum().idxmax()
-        st.metric("الأكثر مبيعاً", top_item)
-    else:
-        st.warning("لا توجد بيانات كافية للتحليل حالياً.")
-
-# --- 4. تذييل النظام ---
-st.sidebar.markdown("---")
-st.sidebar.write("نظام غسق الطبي | النسخة الذهبية 2026")
+sale_qty = st.number_input("الكمية المطلوبة", 1)
+if st.button("إتمام البيع وطباعة PDF"):
+    total = sale_qty * item_data['السعر']
+    pdf_path = generate_pdf(selected_item, sale_qty, total)
+    st.success(f"تم البيع! إجمالي: {total}")
+    with open(pdf_path, "rb") as f:
+        st.download_button("تحميل الفاتورة PDF", f, file_name=pdf_path)
