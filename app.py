@@ -1,36 +1,27 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import os
+from streamlit_webrtc import webrtc_streamer # مكتبة الكاميرا
+import av
 
-st.set_page_config(layout="wide") # هذا السطر هو الأهم لجعل الواجهة عريضة
+st.set_page_config(layout="wide")
+st.title("💊 نظام غسق - الطباعة والباركود المباشر")
 
-st.title("💊 نظام غسق الطبي - لوحة التحكم العرضية")
+# قارئ الباركود عبر الكاميرا
+st.subheader("📷 قارئ الباركود المباشر")
+webrtc_streamer(key="barcode-scanner") 
 
-DB_FILE = 'ghasaq_data.csv'
-SALES_FILE = 'sales_history.csv'
+# نظام الطباعة (يفتح نافذة الطابعة في المتصفح)
+def print_invoice(total):
+    st.markdown(f"""
+        <script>
+            var printWindow = window.open('', '', 'height=400,width=600');
+            printWindow.document.write('<html><body><h1>صيدلية غسق</h1><p>الإجمالي: {total} ريال</p></body></html>');
+            printWindow.print();
+            printWindow.close();
+        </script>
+    """, unsafe_allow_html=True)
 
-# صف أول يحتوي على أعمدة (نقطة البيع + المخزون)
-col1, col2 = st.columns([1, 2]) 
-
-with col1:
-    st.subheader("🛒 نقطة البيع")
-    # هنا نضع كود البيع المختصر
-    barcode = st.text_input("باركود")
-    if st.button("بيع"):
-        st.success("تم!")
-
-with col2:
-    st.subheader("📦 جدول المخزون الحالي")
-    if os.path.exists(DB_FILE):
-        st.dataframe(pd.read_csv(DB_FILE), use_container_width=True)
-
-# صف ثانٍ للتقارير (عرضي بالكامل)
-st.markdown("---")
-st.subheader("📈 تقارير الأداء")
-if os.path.exists(SALES_FILE):
-    sales_df = pd.read_csv(SALES_FILE)
-    if not sales_df.empty:
-        # رسم بياني عرضي يملأ الشاشة
-        fig = px.bar(sales_df, x='التاريخ', y='الإجمالي', orientation='v')
-        st.plotly_chart(fig, use_container_width=True)
+# زر البيع مع أمر الطباعة
+if st.button("إتمام البيع والطباعة"):
+    print_invoice(500) # مثال تجريبي
+    st.success("تم إرسال الفاتورة للطابعة!")
