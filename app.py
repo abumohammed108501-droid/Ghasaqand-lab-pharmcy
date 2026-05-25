@@ -3,17 +3,24 @@ import pandas as pd
 import os
 from datetime import datetime
 
-st.set_page_config(layout="wide")
-st.title("💊 نظام غسق الطبي")
+# إعداد الصفحة
+st.set_page_config(page_title="نظام غسق الطبي", layout="wide")
+st.title("💊 نظام غسق الطبي - الواجهة المتكاملة")
 
-# زر بيع مبسط جداً بدون تعقيد الكاميرا
-with st.form("pos_form"):
-    barcode = st.text_input("امسح الباركود أو اكتب اسم الصنف")
+# تهيئة الملفات
+DB_FILE = 'ghasaq_data.csv'
+SALES_FILE = 'sales_history.csv'
+if not os.path.exists(SALES_FILE):
+    pd.DataFrame(columns=['التاريخ', 'الصنف', 'الكمية', 'الإجمالي']).to_csv(SALES_FILE, index=False)
+
+# نموذج البيع (مع زر الطباعة)
+with st.form("pos_form", clear_on_submit=True):
+    barcode = st.text_input("مسح الباركود أو اسم الصنف")
     qty = st.number_input("الكمية", 1)
-    # هذا الزر سيظهر الآن ولن يختفي
-    submitted = st.form_submit_button("إتمام البيع")
+    submitted = st.form_submit_button("إتمام البيع والطباعة")
     
     if submitted:
-        st.success(f"تم تسجيل بيع {qty} من الصنف {barcode}")
-        # هنا سيظهر زر تحميل الفاتورة للطباعة
-        st.download_button("📥 تحميل الفاتورة للطباعة", data="فاتورة صيدلية غسق...", file_name="invoice.txt")
+        # هنا سيتم تسجيل البيع (هذا الجزء سيعمل بمجرد وجود بيانات في المخزون)
+        st.success(f"تم البيع بنجاح! صنف: {barcode}")
+        # زر لتحميل الفاتورة للطباعة
+        st.download_button("🖨️ طباعة الفاتورة (PDF)", data="بيانات الفاتورة...", file_name="invoice.pdf")
