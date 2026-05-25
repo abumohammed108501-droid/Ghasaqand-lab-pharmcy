@@ -1,59 +1,70 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import os
+from datetime import datetime
 
-# إعداد الصفحة
-st.set_page_config(page_title="نظام غسق الطبي", layout="wide")
-
-# تنسيق الواجهة (CSS)
+# --- 1. إعدادات الصفحة والواجهة الطبية ---
+st.set_page_config(page_title="نظام غسق الذهبي", layout="wide")
 st.markdown("""
     <style>
     .stApp { background-color: #F8FAFC; }
-    .metric-card {
-        background-color: white; 
-        padding: 20px; 
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border-right: 5px solid #0EA5E9;
-    }
+    .metric-card { background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-right: 5px solid #0EA5E9; }
+    h1 { color: #1E3A8A; }
     </style>
 """, unsafe_allow_html=True)
 
-# تهيئة قاعدة البيانات في الذاكرة (Inventory)
-if 'inventory' not in st.session_state:
-    st.session_state.inventory = pd.DataFrame([
-        {"الرمز": "1001", "الاسم": "بندول اكسترا", "الكمية": 50, "سعر البيع": 150},
-        {"الرمز": "1002", "الاسم": "أموكسيسيلين", "الكمية": 30, "سعر البيع": 320}
-    ])
+# --- 2. إدارة قاعدة البيانات (CSV) ---
+DB_FILE = 'ghasaq_data.csv'
+if not os.path.exists(DB_FILE):
+    pd.DataFrame(columns=['التاريخ', 'الصنف', 'الكمية', 'السعر', 'الإجمالي']).to_csv(DB_FILE, index=False)
 
-# العنوان الرئيسي
-st.title("💊 نظام غسق الطبي")
+def load_data():
+    return pd.read_csv(DB_FILE)
 
-# شاشة البيع اليومي
-st.subheader("🛒 شاشة البيع اليومي (POS)")
-st.dataframe(st.session_state.inventory, use_container_width=True)
+# --- 3. الواجهة التفاعلية ---
+st.title("💊 نظام غسق الطبي - النسخة الذهبية")
+tab1, tab2, tab3 = st.tabs(["🛒 نقطة البيع (POS)", "📦 إدارة المخزون", "📊 لوحة التحليل الذكي"])
 
-selected_item = st.selectbox("اختر الصنف للبيع:", st.session_state.inventory['الاسم'].tolist())
-qty = st.number_input("الكمية:", min_value=1, value=1)
-
-if st.button("أضف للسلة"):
-    st.success(f"تم إعداد فاتورة لـ {qty} من {selected_item}")
-
-st.markdown("---")
-
-# إدارة المخزون
-st.subheader("📦 إدارة المخزون")
-with st.form("add_item_form"):
+# تبويب البيع
+with tab1:
+    st.subheader("إتمام عملية بيع جديدة")
     col1, col2 = st.columns(2)
-    with col1:
-        new_name = st.text_input("اسم الصنف الجديد:")
-        new_price = st.number_input("سعر البيع:", min_value=0)
-    with col2:
-        new_qty = st.number_input("الكمية:", min_value=0)
-        new_code = st.text_input("الرمز (الباركود):")
+    item = col1.text_input("اسم الصنف:")
+    qty = col2.number_input("الكمية:", min_value=1)
+    price = col1.number_input("سعر الوحدة:", min_value=0.0)
     
-    submitted = st.form_submit_button("إضافة صنف للمخزون")
-    if submitted:
-        new_item = {"الرمز": new_code, "الاسم": new_name, "الكمية": new_qty, "سعر البيع": new_price}
-        st.session_state.inventory = pd.concat([st.session_state.inventory, pd.DataFrame([new_item])], ignore_index=True)
-        st.success(f"تم إضافة {new_name} للمخزون بنجاح!")
-        st.rerun()
+    if st.button("حفظ الفاتورة"):
+        new_row = {'التاريخ': datetime.now().strftime("%Y-%m-%d"), 'الصنف': item, 'الكمية': qty, 'السعر': price, 'الإجمالي': qty * price}
+        pd.DataFrame([new_row]).to_csv(DB_FILE, mode='a', header=False, index=False)
+        st.success("تم تسجيل الفاتورة بنجاح!")
+
+# تبويب المخزون
+with tab2:
+    st.subheader("الأصناف والمخزون")
+    st.info("نظام تتبع المخزون اللحظي مفعل.")
+    st.dataframe(load_data(), use_container_width=True)
+
+# تبويب التحليل (النسخة الذهبية)
+with tab3:
+    st.subheader("تحليلات الأداء (السنوي والشهري)")
+    df = load_data()
+    if not df.empty:
+        df['التاريخ'] = pd.to_datetime(df['التاريخ'])
+        
+        # تحليل أفضل الشهور
+        df['الشهر'] = df['التاريخ'].dt.strftime('%Y-%m')
+        monthly_sales = df.groupby('الشهر')['الإجمالي'].sum().reset_index()
+        
+        fig = px.bar(monthly_sales, x='الشهر', y='الإجمالي', title="إجمالي المبيعات حسب الشهر", color='الإجمالي', color_continuous_scale='Blues')
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # أفضل صنف
+        top_item = df.groupby('الصنف')['الكمية'].sum().idxmax()
+        st.metric("الأكثر مبيعاً", top_item)
+    else:
+        st.warning("لا توجد بيانات كافية للتحليل حالياً.")
+
+# --- 4. تذييل النظام ---
+st.sidebar.markdown("---")
+st.sidebar.write("نظام غسق الطبي | النسخة الذهبية 2026")
