@@ -1,31 +1,66 @@
 import streamlit as st
-from reportlab.pdfgen import canvas
+import pandas as pd
+import plotly.express as px
 import os
+from datetime import datetime
+from reportlab.pdfgen import canvas
 
-st.set_page_config(layout="wide")
-st.title("💊 نظام غسق الطبي - الإصدار الاحترافي")
+# 1. إعداد الصفحة الأساسي
+st.set_page_config(page_title="نظام غسق Pro", layout="wide")
 
-# -- 1. قسم الكاميرا (لتصوير المستندات أو الباركود) --
-st.subheader("📷 الكاميرا (تصوير الوصفات أو الباركود)")
-img_file = st.camera_input("التقاط صورة")
+# 2. تهيئة الملفات (قاعدة البيانات)
+DB_FILE = 'ghasaq_data.csv'
+SALES_FILE = 'sales_history.csv'
+if not os.path.exists(DB_FILE):
+    pd.DataFrame(columns=['الباركود', 'الصنف', 'السعر', 'الكمية']).to_csv(DB_FILE, index=False)
+if not os.path.exists(SALES_FILE):
+    pd.DataFrame(columns=['التاريخ', 'الصنف', 'الكمية', 'الإجمالي']).to_csv(SALES_FILE, index=False)
 
-if img_file:
-    st.success("تم التقاط الصورة بنجاح!")
-    st.image(img_file)
+# 3. القائمة الجانبية (Navigation)
+st.sidebar.title("💊 نظام غسق Pro")
+page = st.sidebar.radio("القائمة الرئيسية", ["📊 لوحة التحكم", "🛒 نقطة البيع", "📦 إدارة المخزون", "📜 سجل المبيعات"])
 
-# -- 2. قسم الفاتورة (PDF) --
-st.subheader("🖨️ إصدار الفاتورة")
-invoice_data = st.text_area("تفاصيل الفاتورة", "صيدلية غسق - دواء: بانادول - السعر: 10 ريال")
+# --- صفحة: لوحة التحكم (الرسوم البيانية) ---
+if page == "📊 لوحة التحكم":
+    st.title("📊 لوحة الأداء المالي")
+    sales_df = pd.read_csv(SALES_FILE)
+    if not sales_df.empty:
+        sales_df['التاريخ'] = pd.to_datetime(sales_df['التاريخ'])
+        fig = px.bar(sales_df.groupby(sales_df['التاريخ'].dt.date)['الإجمالي'].sum().reset_index(), 
+                     x='التاريخ', y='الإجمالي', title="الأرباح اليومية")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("لا توجد مبيعات حالياً.")
 
-def create_pdf(text):
-    pdf_path = "invoice.pdf"
-    c = canvas.Canvas(pdf_path)
-    c.drawString(100, 750, "صيدلية غسق - فاتورة بيع")
-    c.drawString(100, 730, text)
-    c.save()
-    return pdf_path
+# --- صفحة: نقطة البيع (الكاميرا + الفاتورة) ---
+elif page == "🛒 نقطة البيع":
+    st.title("🛒 نقطة البيع")
+    st.subheader("📷 الكاميرا (تصوير الوصفات/الباركود)")
+    img_file = st.camera_input("التقط صورة للوصفة أو الباركود")
+    
+    with st.form("pos_form"):
+        barcode = st.text_input("باركود أو اسم الصنف")
+        qty = st.number_input("الكمية", 1)
+        if st.form_submit_button("إتمام البيع"):
+            st.success(f"تم تسجيل بيع {qty} من {barcode}")
+            st.download_button("🖨️ تحميل الفاتورة PDF", data="فاتورة صيدلية غسق", file_name="invoice.pdf")
 
-if st.button("إنشاء وتحميل الفاتورة PDF"):
-    pdf_file = create_pdf(invoice_data)
-    with open(pdf_file, "rb") as f:
-        st.download_button("📥 تحميل الفاتورة الآن", f, file_name="invoice.pdf")
+# --- صفحة: إدارة المخزون ---
+elif page == "📦 إدارة المخزون":
+    st.title("📦 إدارة المخزون")
+    df = pd.read_csv(DB_FILE)
+    st.dataframe(df, use_container_width=True)
+    with st.expander("إضافة صنف جديد"):
+        with st.form("add_item"):
+            name = st.text_input("اسم الصنف")
+            price = st.number_input("السعر")
+            stock = st.number_input("الكمية")
+            if st.form_submit_button("إضافة"):
+                new_row = pd.DataFrame([{'الباركود': '000', 'الصنف': name, 'السعر': price, 'الكمية': stock}])
+                new_row.to_csv(DB_FILE, mode='a', header=False, index=False)
+                st.rerun()
+
+# --- صفحة: سجل المبيعات ---
+elif page == "📜 سجل المبيعات":
+    st.title("📜 جميع العمليات")
+    st.dataframe(pd.read_csv(SALES_FILE), use_container_width=True)
