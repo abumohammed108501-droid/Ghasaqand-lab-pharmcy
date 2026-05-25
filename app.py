@@ -1,69 +1,69 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
 from datetime import datetime
 from reportlab.pdfgen import canvas
+import os
 
-# إعداد الصفحة
-st.set_page_config(page_title="نظام غسق الطبي", layout="wide")
+st.set_page_config(page_title="نظام غسق الطبي - الاحترافي", layout="wide")
+
 DB_FILE = 'ghasaq_data.csv'
 SALES_FILE = 'sales_history.csv'
 
 # تهيئة الملفات
-def init_files():
-    if not os.path.exists(DB_FILE):
-        pd.DataFrame(columns=['الباركود', 'الصنف', 'نوع_الوحدة', 'السعر', 'الكمية']).to_csv(DB_FILE, index=False)
-    if not os.path.exists(SALES_FILE):
-        pd.DataFrame(columns=['التاريخ', 'الصنف', 'الكمية', 'الإجمالي']).to_csv(SALES_FILE, index=False)
+if not os.path.exists(SALES_FILE):
+    pd.DataFrame(columns=['التاريخ', 'الصنف', 'الكمية', 'الإجمالي']).to_csv(SALES_FILE, index=False)
 
-init_files()
+st.title("💊 نظام غسق الطبي - لوحة الإدارة المتكاملة")
 
-# واجهة النظام
-st.title("💊 نظام غسق الطبي - النسخة الذهبية")
-tab1, tab2, tab3, tab4 = st.tabs(["📊 لوحة الإدارة", "🛒 نقطة البيع", "📦 المخزون", "📜 سجل العمليات"])
+# 1. نظام الفواتير PDF
+def generate_invoice(item, qty, total):
+    file_name = f"invoice_{datetime.now().strftime('%Y%m%d%H%M')}.pdf"
+    c = canvas.Canvas(file_name)
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(200, 800, "صيدلية غسق - فاتورة بيع")
+    c.setFont("Helvetica", 12)
+    c.drawString(100, 750, f"التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    c.drawString(100, 730, f"الصنف: {item}")
+    c.drawString(100, 710, f"الكمية: {qty}")
+    c.drawString(100, 690, f"الإجمالي: {total} ريال")
+    c.save()
+    return file_name
 
-# 1. لوحة الإدارة (تحليل البيانات)
-with tab1:
-    st.subheader("لوحة الأداء المالي")
+# 2. لوحة التقارير (اليومي، الشهري، السنوي)
+with st.expander("📊 التقارير المالية"):
     sales_df = pd.read_csv(SALES_FILE)
-    if not sales_df.empty:
-        sales_df['التاريخ'] = pd.to_datetime(sales_df['التاريخ'])
-        fig = px.bar(sales_df, x='التاريخ', y='الإجمالي', title="الأرباح اليومية")
-        st.plotly_chart(fig, use_container_width=True)
+    sales_df['التاريخ'] = pd.to_datetime(sales_df['التاريخ'])
+    
+    period = st.selectbox("اختر الفترة:", ["اليومية", "الشهرية", "السنوية"])
+    if period == "اليومية":
+        data = sales_df.groupby(sales_df['التاريخ'].dt.date)['الإجمالي'].sum()
+    elif period == "الشهرية":
+        data = sales_df.groupby(sales_df['التاريخ'].dt.to_period('M'))['الإجمالي'].sum()
     else:
-        st.info("لا توجد مبيعات بعد.")
+        data = sales_df.groupby(sales_df['التاريخ'].dt.to_period('Y'))['الإجمالي'].sum()
+    
+    st.bar_chart(data)
 
-# 2. نقطة البيع (POS)
-with tab2:
+# 3. نقطة البيع (مع دعم الباركود)
+with st.form("pos_form"):
     df = pd.read_csv(DB_FILE)
-    if not df.empty:
-        selected = st.selectbox("اختر الصنف للبيع:", df['الصنف'].unique())
+    barcode_input = st.text_input("امسح الباركود أو اكتب اسم الصنف:")
+    
+    # البحث بالباركود أو الاسم
+    item = df[(df['الباركود'] == barcode_input) | (df['الصنف'] == barcode_input)]
+    
+    if not item.empty:
         qty = st.number_input("الكمية", 1)
-        if st.button("إتمام البيع"):
-            price = df[df['الصنف'] == selected].iloc[-1]['السعر']
-            total = qty * price
-            # تسجيل العملية
-            new_sale = pd.DataFrame([{'التاريخ': datetime.now(), 'الصنف': selected, 'الكمية': qty, 'الإجمالي': total}])
+        if st.form_submit_button("بيع وإصدار فاتورة"):
+            total = qty * item.iloc[0]['السعر']
+            # حفظ العملية
+            new_sale = pd.DataFrame([{'التاريخ': datetime.now(), 'الصنف': item.iloc[0]['الصنف'], 'الكمية': qty, 'الإجمالي': total}])
             new_sale.to_csv(SALES_FILE, mode='a', header=False, index=False)
-            st.success(f"تمت العملية! الإجمالي: {total}")
-            st.balloons()
+            
+            # تحميل الفاتورة
+            pdf = generate_invoice(item.iloc[0]['الصنف'], qty, total)
+            with open(pdf, "rb") as f:
+                st.download_button("📥 تحميل الفاتورة PDF", f, pdf)
     else:
-        st.warning("يرجى إضافة أصناف في تبويب المخزون أولاً.")
-
-# 3. المخزون
-with tab3:
-    with st.form("add_item", clear_on_submit=True):
-        name = st.text_input("اسم الصنف")
-        barcode = st.text_input("الباركود")
-        price = st.number_input("السعر")
-        qty = st.number_input("الكمية")
-        if st.form_submit_button("إضافة للمخزون"):
-            new_item = pd.DataFrame([{'الباركود': barcode, 'الصنف': name, 'نوع_الوحدة': 'حبة', 'السعر': price, 'الكمية': qty}])
-            new_item.to_csv(DB_FILE, mode='a', header=False, index=False)
-            st.rerun()
-    st.dataframe(pd.read_csv(DB_FILE))
-
-# 4. سجل العمليات
-with tab4:
-    st.dataframe(pd.read_csv(SALES_FILE))
+        st.write("الرجاء إدخال باركود صحيح أو اسم الصنف.")
