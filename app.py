@@ -42,7 +42,7 @@ def generate_pdf_invoice(cart_items, invoice_id, total_amount):
         fontSize=24,
         leading=28,
         textColor=colors.HexColor("#1A365D"),
-        alignment=1 # منتصف الصفحة
+        alignment=1
     )
     
     # عنوان الفاتورة
@@ -140,11 +140,9 @@ if menu == "🛒 شاشة البيع اليومي (POS)":
         c1, c2 = st.columns(2)
         with c1:
             if st.button("💾 إتمام وحفظ عملية البيع"):
-                # إنقاص الكميات من المخزون
                 for index, row in cart_df.iterrows():
                     st.session_state.inventory.loc[st.session_state.inventory['الرمز'] == row['الرمز'], 'الكمية'] -= row['الكمية']
                 
-                # إضافة السجل للمبيعات التاريخية
                 invoice_id = f"INV-{datetime.datetime.now().strftime('%M%S')}"
                 st.session_state.sales_history.append({
                     "رقم الفاتورة": invoice_id,
@@ -157,7 +155,6 @@ if menu == "🛒 شاشة البيع اليومي (POS)":
                 st.rerun()
                 
         with c2:
-            # توليد وتحميل فاتورة PDF فورية
             inv_id = f"INV-{datetime.datetime.now().strftime('%M%S')}"
             pdf_data = generate_pdf_invoice(st.session_state.current_cart, inv_id, total_bill)
             st.download_button(
@@ -175,7 +172,6 @@ elif menu == "📦 إدارة المخزون والإنذارات":
     
     st.dataframe(st.session_state.inventory, use_container_width=True)
     
-    # فحص إنذار نقص المخزون (أقل من 10 قطع)
     low_stock = st.session_state.inventory[(st.session_state.inventory['الكمية'] < 10) & (st.session_state.inventory['النوع'] == 'دواء')]
     if not low_stock.empty:
         st.warning("⚠️ تنبيه: هناك أصناف أوشكت على النفاد في الصيدلية!")
@@ -198,11 +194,9 @@ elif menu == "📦 إدارة المخزون والإنذارات":
         submit_btn = st.form_submit_button("حفظ وتحديث المستودع")
         if submit_btn:
             if new_code in st.session_state.inventory['الرمز'].values:
-                # تحديث الكمية والسعر الحالي
                 st.session_state.inventory.loc[st.session_state.inventory['الرمز'] == new_code, 'الكمية'] += new_qty
                 st.success(f"تم تحديث كمية صنف: {new_name}")
             else:
-                # إضافة صنف جديد كلياً
                 new_row = {"الرمز": new_code, "الاسم": new_name, "النوع": new_type, "الكمية": new_qty, "سعر الشراء": new_cost, "سعر البيع": new_price}
                 st.session_state.inventory = pd.concat([st.session_state.inventory, pd.DataFrame([new_row])], ignore_index=True)
                 st.success(f"تمت إضافة الصنف الجديد: {new_name}")
@@ -226,10 +220,9 @@ elif menu == "📈 لوحة التحكم والتقارير":
             st.metric("عدد الفواتير الصادرة", len(df_sales))
             
         st.write("### حركة المبيعات")
-        st.dataframe(df_sales[['رقم الفاتورة', 'التاريخ', 'الإجمالي']], use_container_width=True)
+        st.dataframe(df_sales[['رقم الفاتورة', 'التاريخ', 'إجمالي الفاتورة']], use_container_width=True)
         
-        # رسم بياني توضيحي للمبيعات
-        fig = px.bar(df_sales, x="التاريخ", y="الإجمالي", title="مخطط الإيرادات اليومية والخدمات", labels={"الإجمالي": "المبلغ بالجنيه"})
+        fig = px.bar(df_sales, x="التاريخ", y="إجمالي الفاتورة", title="مخطط الإيرادات اليومية والخدمات", labels={"إجمالي الفاتورة": "المبلغ بالجنيه"})
         st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------
@@ -241,7 +234,25 @@ elif menu == "📷 تصوير المستندات والأرشيف":
     
     doc_title = st.text_input("اسم أو عنوان المستند (مثال: فاتورة شركة الحكمة لشهر مايو):")
     
-    # خياران: التقاط بالمسح أو رفع ملف
     img_file = st.camera_input("📸 التقط صورة مباشرة للمستند عبر الكاميرا:")
-    uploaded_file
-      
+    uploaded_file = st.file_uploader("📂 أو قم برفع صورة الفاتورة من ملفات الجهاز:", type=["jpg", "jpeg", "png"])
+    
+    final_image = img_file if img_file is not None else uploaded_file
+    
+    if final_image is not None and doc_title:
+        if st.button("💾 حفظ المستند في الأرشيف السحابي"):
+            img = Image.open(final_image)
+            st.session_state.documents_archive.append({
+                "العنوان": doc_title,
+                "التوقيت": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "الصورة": img
+            })
+            st.success("تم أرشفة المستند الورقي بنجاح وتأمينه رقمياً!")
+            st.rerun()
+            
+    if st.session_state.documents_archive:
+        st.write("---")
+        st.subheader("🗄️ المستندات والفواتير المؤرشفة سابقاً")
+        for i, doc_item in enumerate(st.session_state.documents_archive):
+            with st.expander(f"📄 {doc_item['العنوان']} - {doc_item['التوقيت']}"):
+                st.image(doc_item['الصورة'], use_container_width=True)
