@@ -1,71 +1,78 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import os
 
-# إعداد الصفحة
-st.set_page_config(page_title="نظام غسق - Ghasaq OS", layout="wide")
+# 1. إعدادات النظام (يجب أن تكون في أعلى الكود دائماً)
+st.set_page_config(page_title="نظام غسق OS", layout="wide")
 
-# --- تهيئة النظام ---
+# 2. تهيئة الذاكرة (لحل مشكلة NameError نهائياً)
 if 'sales_history' not in st.session_state:
-    st.session_state.sales_history = pd.DataFrame(columns=['التاريخ', 'القسم', 'الصنف/الخدمة', 'الكمية', 'السعر'])
+    st.session_state.sales_history = pd.DataFrame(columns=['التاريخ', 'القسم', 'الصنف', 'الكمية'])
+if 'invoice_data' not in st.session_state:
+    st.session_state.invoice_data = None
 
-# --- تصميم الفاتورة (مُنسق للطباعة) ---
-def render_invoice(item, qty, price, department):
+# --- دالة عرض الفاتورة (احترافية وقابلة للطباعة) ---
+def show_printable_invoice(item, qty, price, dept):
+    total = qty * price
     return f"""
-    <div style="border: 2px solid #333; padding: 20px; width: 300px; font-family: Arial;">
-        <h2 style="text-align: center;">صيدلية ومعمل غسق</h2>
-        <p>التاريخ: {datetime.date.today()}</p>
+    <div style="border: 2px solid #2c3e50; padding: 25px; width: 350px; background-color: #fff; border-radius: 10px; color: #000;">
+        <h2 style="text-align: center; color: #2c3e50;">صيدلية ومعمل غسق</h2>
+        <p style="text-align: center;">{datetime.date.today()}</p>
         <hr>
-        <p>القسم: {department}</p>
-        <p>الصنف: {item}</p>
-        <p>الكمية: {qty}</p>
+        <p><strong>القسم:</strong> {dept}</p>
+        <p><strong>البيان:</strong> {item}</p>
+        <p><strong>الكمية:</strong> {qty}</p>
         <hr>
-        <h3 style="text-align: center;">الإجمالي: {qty * price} ريال</h3>
+        <h3 style="text-align: center;">الإجمالي: {total} ريال</h3>
+        <p style="text-align: center; font-size: 10px;">شكراً لثقتكم</p>
     </div>
     """
 
 # --- القائمة الجانبية ---
-st.sidebar.title("🛠️ لوحة التحكم")
-page = st.sidebar.radio("الخدمات", ["الرئيسية", "نقطة البيع (POS)", "إدارة المخزون/الخدمات"])
+st.sidebar.title("🛠️ لوحة تحكم غسق")
+page = st.sidebar.radio("الخدمات", ["📊 المبيعات اليومية", "🛒 نقطة البيع (POS)", "📦 إدارة المخزون"])
 
-# --- الصفحة الرئيسية (المبيعات) ---
-if page == "الرئيسية":
-    st.title("📊 المبيعات اليومية")
-    st.info("نظرة عامة على المبيعات (لا تشمل التكاليف/الأرباح)")
-    # عرض جدول المبيعات فقط
-    st.dataframe(st.session_state.sales_history[['التاريخ', 'القسم', 'الصنف/الخدمة', 'الكمية']], use_container_width=True)
+# --- الصفحة 1: المبيعات (بدون أرباح) ---
+if page == "📊 المبيعات اليومية":
+    st.title("📊 حركة المبيعات اليومية")
+    st.info("سجل العمليات (لا يظهر التكاليف أو الأرباح)")
+    if not st.session_state.sales_history.empty:
+        st.dataframe(st.session_state.sales_history, use_container_width=True)
+    else:
+        st.write("لا توجد عمليات مسجلة اليوم.")
 
-# --- نقطة البيع (العمليات اليومية) ---
-elif page == "نقطة البيع (POS)":
-    st.title("🛒 نقطة البيع")
+# --- الصفحة 2: نقطة البيع ---
+elif page == "🛒 نقطة البيع (POS)":
+    st.title("🛒 نقطة البيع الموحدة")
+    
+    # استخدام Tabs للفصل بين الصيدلية والمعمل
     tab1, tab2 = st.tabs(["💊 الصيدلية", "🧪 المعمل"])
 
     with tab1:
-        with st.form("pharmacy_form"):
+        with st.form("pharmacy_form", clear_on_submit=True):
             item = st.text_input("اسم الدواء / الباركود")
             qty = st.number_input("الكمية", 1)
             price = st.number_input("السعر")
-            if st.form_submit_button("إصدار الفاتورة"):
+            if st.form_submit_button("إتمام البيع"):
+                new_sale = {'التاريخ': datetime.datetime.now().strftime("%H:%M"), 'القسم': 'صيدلية', 'الصنف': item, 'الكمية': qty}
+                st.session_state.sales_history = pd.concat([st.session_state.sales_history, pd.DataFrame([new_sale])], ignore_index=True)
                 st.session_state.invoice_data = {"item": item, "qty": qty, "price": price, "dept": "صيدلية"}
-                st.success("تم تسجيل العملية")
+                st.rerun()
 
     with tab2:
-        with st.form("lab_form"):
-            test = st.text_input("اسم الفحص/الخدمة")
+        with st.form("lab_form", clear_on_submit=True):
+            test_name = st.text_input("اسم الفحص/الخدمة")
             price_lab = st.number_input("السعر")
-            if st.form_submit_button("تسجيل فحص"):
-                st.session_state.invoice_data = {"item": test, "qty": 1, "price": price_lab, "dept": "معمل"}
-                st.success("تم تسجيل الفحص")
+            if st.form_submit_button("تسجيل الفحص"):
+                new_sale = {'التاريخ': datetime.datetime.now().strftime("%H:%M"), 'القسم': 'معمل', 'الصنف': test_name, 'الكمية': 1}
+                st.session_state.sales_history = pd.concat([st.session_state.sales_history, pd.DataFrame([new_sale])], ignore_index=True)
+                st.session_state.invoice_data = {"item": test_name, "qty": 1, "price": price_lab, "dept": "معمل"}
+                st.rerun()
 
-    # عرض الفاتورة بعد التسجيل
-    if 'invoice_data' in st.session_state:
+    # عرض الفاتورة فور صدورها
+    if st.session_state.invoice_data:
         data = st.session_state.invoice_data
-        st.markdown(render_invoice(data['item'], data['qty'], data['price'], data['dept']), unsafe_allow_html=True)
-        st.button("إخفاء الفاتورة", on_click=lambda: st.session_state.pop('invoice_data'))
-
-# --- إدارة المخزون ---
-elif page == "إدارة المخزون/الخدمات":
-    st.title("📦 قاعدة بيانات الأصناف")
-    # هنا تضع كود إضافة أصناف جديدة للمخزون أو تحديث الأسعار
-    st.warning("هذه المنطقة للمدير فقط")
+        st.markdown(show_printable_invoice(data['item'], data['qty'], data['price'], data['dept']), unsafe_allow_html=True)
+        if st.button("إغلاق الفاتورة"):
+            st.session_state.invoice_data = None
+            st.rerun()
