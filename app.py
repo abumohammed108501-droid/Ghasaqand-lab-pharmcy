@@ -14,57 +14,37 @@ SALES_FILE = 'sales_history.csv'
 if not os.path.exists(SALES_FILE):
     pd.DataFrame(columns=['التاريخ', 'الصنف', 'الكمية', 'الإجمالي']).to_csv(SALES_FILE, index=False)
 
-st.title("💊 نظام غسق الطبي - لوحة الإدارة المتكاملة")
+st.title("💊 نظام غسق الطبي - الواجهة المتكاملة")
 
-# 1. نظام الفواتير PDF
-def generate_invoice(item, qty, total):
-    file_name = f"invoice_{datetime.now().strftime('%Y%m%d%H%M')}.pdf"
-    c = canvas.Canvas(file_name)
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(200, 800, "صيدلية غسق - فاتورة بيع")
-    c.setFont("Helvetica", 12)
-    c.drawString(100, 750, f"التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    c.drawString(100, 730, f"الصنف: {item}")
-    c.drawString(100, 710, f"الكمية: {qty}")
-    c.drawString(100, 690, f"الإجمالي: {total} ريال")
-    c.save()
-    return file_name
-
-# 2. لوحة التقارير
-with st.expander("📊 التقارير المالية"):
-    if os.path.exists(SALES_FILE):
-        sales_df = pd.read_csv(SALES_FILE)
-        sales_df['التاريخ'] = pd.to_datetime(sales_df['التاريخ'])
-        
-        period = st.selectbox("اختر الفترة:", ["اليومية", "الشهرية", "السنوية"])
-        if period == "اليومية":
-            data = sales_df.groupby(sales_df['التاريخ'].dt.date)['الإجمالي'].sum()
-        elif period == "الشهرية":
-            data = sales_df.groupby(sales_df['التاريخ'].dt.to_period('M').astype(str))['الإجمالي'].sum()
-        else:
-            data = sales_df.groupby(sales_df['التاريخ'].dt.to_period('Y').astype(str))['الإجمالي'].sum()
-        
-        st.bar_chart(data)
-
-# 3. نقطة البيع (تم إصلاح خطأ الزر هنا)
+# 1. قسم نقطة البيع (في الأعلى)
+st.subheader("🛒 نقطة البيع السريع")
 with st.form("pos_form"):
     df = pd.read_csv(DB_FILE)
-    barcode_input = st.text_input("امسح الباركود أو اكتب اسم الصنف:")
+    barcode = st.text_input("امسح الباركود أو اكتب اسم الصنف:")
     qty = st.number_input("الكمية", min_value=1, value=1)
-    
-    # زر الإرسال داخل النموذج (حل المشكلة)
-    submitted = st.form_submit_button("بيع وإصدار فاتورة")
-    
-    if submitted:
-        item = df[(df['الباركود'].astype(str) == barcode_input) | (df['الصنف'] == barcode_input)]
+    if st.form_submit_button("بيع وإصدار فاتورة"):
+        item = df[(df['الباركود'].astype(str) == barcode) | (df['الصنف'] == barcode)]
         if not item.empty:
             total = qty * item.iloc[0]['السعر']
+            # حفظ العملية
             new_sale = pd.DataFrame([{'التاريخ': datetime.now(), 'الصنف': item.iloc[0]['الصنف'], 'الكمية': qty, 'الإجمالي': total}])
             new_sale.to_csv(SALES_FILE, mode='a', header=False, index=False)
-            
-            pdf = generate_invoice(item.iloc[0]['الصنف'], qty, total)
-            with open(pdf, "rb") as f:
-                st.download_button("📥 تحميل الفاتورة PDF", f, pdf)
-            st.success("تمت العملية بنجاح!")
+            st.success(f"تمت العملية! الإجمالي: {total} ريال")
         else:
-            st.error("الصنف غير موجود في المخزون.")
+            st.error("صنف غير موجود.")
+
+# 2. قسم التقارير والرسوم البيانية
+st.subheader("📊 تقارير الأداء")
+sales_df = pd.read_csv(SALES_FILE)
+if not sales_df.empty:
+    sales_df['التاريخ'] = pd.to_datetime(sales_df['التاريخ'])
+    fig = px.bar(sales_df.groupby(sales_df['التاريخ'].dt.date)['الإجمالي'].sum().reset_index(), x='التاريخ', y='الإجمالي')
+    st.plotly_chart(fig, use_container_width=True)
+
+# 3. قسم المخزون
+st.subheader("📦 المخزون الحالي")
+st.dataframe(pd.read_csv(DB_FILE), use_container_width=True)
+
+# 4. قسم سجل العمليات
+st.subheader("📜 سجل المبيعات")
+st.dataframe(pd.read_csv(SALES_FILE), use_container_width=True)
