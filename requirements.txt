@@ -4,4 +4,3 @@ fpdf
 python-barcode
 pillow
 opencv-python-headless
-pyzbar
