@@ -5,51 +5,52 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import os
 
-# 1. إعدادات الصفحة
-st.set_page_config(page_title="نظام غسق الطبي - النسخة الذهبية", layout="wide")
+# إعدادات الصفحة
+st.set_page_config(page_title="نظام غسق الطبي", layout="wide")
 
-# 2. ملف البيانات
 DB_FILE = 'ghasaq_data.csv'
+
+# التأكد من وجود ملف البيانات
 if not os.path.exists(DB_FILE):
     pd.DataFrame(columns=['الباركود', 'الصنف', 'نوع_الوحدة', 'السعر', 'الكمية']).to_csv(DB_FILE, index=False)
 
-# 3. وظيفة إنشاء PDF (الفاتورة)
-def generate_pdf(item, qty, total):
-    file_name = f"فاتورة_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
-    c = canvas.Canvas(file_name, pagesize=letter)
-    c.drawString(100, 750, f"نظام غسق الطبي - فاتورة بيع")
-    c.drawString(100, 730, f"الصنف: {item}")
-    c.drawString(100, 710, f"الكمية: {qty}")
-    c.drawString(100, 690, f"الإجمالي: {total}")
-    c.save()
-    return file_name
+def load_data():
+    return pd.read_csv(DB_FILE)
 
-# 4. الواجهة البرمجية
 st.title("💊 نظام غسق الطبي - النسخة الذهبية")
 
-# تبويب إدارة المخزون (الباركود + كرتون/حبة)
-with st.expander("📦 إضافة صنف للمخزون (الباركود والوحدة)"):
-    name = st.text_input("اسم الصنف")
-    barcode = st.text_input("الباركود")
-    unit_type = st.radio("نوع الوحدة:", ["حبة", "كرتون"])
-    price = st.number_input("السعر")
-    qty = st.number_input("الكمية")
-    if st.button("حفظ الصنف"):
-        new_item = {'الباركود': barcode, 'الصنف': name, 'نوع_الوحدة': unit_type, 'السعر': price, 'الكمية': qty}
-        pd.DataFrame([new_item]).to_csv(DB_FILE, mode='a', header=False, index=False)
-        st.success("تم حفظ الصنف مع الباركود والوحدة.")
+# 1. إدارة المخزون
+with st.expander("📦 إضافة صنف للمخزون"):
+    with st.form("add_item_form"):
+        name = st.text_input("اسم الصنف")
+        barcode = st.text_input("الباركود")
+        unit_type = st.radio("نوع الوحدة:", ["حبة", "كرتون"])
+        price = st.number_input("السعر", min_value=0.0)
+        qty = st.number_input("الكمية", min_value=0)
+        submitted = st.form_submit_button("حفظ الصنف")
+        if submitted:
+            new_data = pd.DataFrame([{'الباركود': barcode, 'الصنف': name, 'نوع_الوحدة': unit_type, 'السعر': price, 'الكمية': qty}])
+            new_data.to_csv(DB_FILE, mode='a', header=False, index=False)
+            st.success("تم حفظ الصنف!")
+            st.rerun()
 
-# تبويب البيع (نقطة البيع)
+# 2. نقطة البيع
 st.subheader("🛒 نقطة البيع (POS)")
-df = pd.read_csv(DB_FILE)
-selected_item = st.selectbox("اختر الصنف من المخزون:", df['الصنف'].unique())
-item_data = df[df['الصنف'] == selected_item].iloc[0]
-st.write(f"الوحدة المتاحة: {item_data['نوع_الوحدة']} - السعر: {item_data['السعر']}")
+df = load_data()
 
-sale_qty = st.number_input("الكمية المطلوبة", 1)
-if st.button("إتمام البيع وطباعة PDF"):
-    total = sale_qty * item_data['السعر']
-    pdf_path = generate_pdf(selected_item, sale_qty, total)
-    st.success(f"تم البيع! إجمالي: {total}")
-    with open(pdf_path, "rb") as f:
-        st.download_button("تحميل الفاتورة PDF", f, file_name=pdf_path)
+if not df.empty:
+    selected_item = st.selectbox("اختر الصنف من المخزون:", df['الصنف'].unique())
+    item_data = df[df['الصنف'] == selected_item]
+    
+    if not item_data.empty:
+        item = item_data.iloc[0]
+        st.write(f"الوحدة: {item['نوع_الوحدة']} | السعر: {item['السعر']}")
+        
+        sale_qty = st.number_input("الكمية المطلوبة", 1)
+        if st.button("إتمام البيع"):
+            total = sale_qty * item['السعر']
+            st.success(f"إجمالي العملية: {total}")
+    else:
+        st.warning("الصنف غير موجود.")
+else:
+    st.info("المخزون فارغ، يرجى إضافة أصناف أولاً.")
