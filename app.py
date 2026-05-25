@@ -2,16 +2,16 @@ import streamlit as st
 import pandas as pd
 import datetime
 
-# 1. إعدادات النظام (يجب أن تكون في أعلى الكود دائماً)
+# 1. إعدادات النظام
 st.set_page_config(page_title="نظام غسق OS", layout="wide")
 
-# 2. تهيئة الذاكرة (لحل مشكلة NameError نهائياً)
+# 2. تهيئة الذاكرة
 if 'sales_history' not in st.session_state:
     st.session_state.sales_history = pd.DataFrame(columns=['التاريخ', 'القسم', 'الصنف', 'الكمية'])
 if 'invoice_data' not in st.session_state:
     st.session_state.invoice_data = None
 
-# --- دالة عرض الفاتورة (احترافية وقابلة للطباعة) ---
+# --- دالة عرض الفاتورة (للطباعة) ---
 def show_printable_invoice(item, qty, price, dept):
     total = qty * price
     return f"""
@@ -24,7 +24,6 @@ def show_printable_invoice(item, qty, price, dept):
         <p><strong>الكمية:</strong> {qty}</p>
         <hr>
         <h3 style="text-align: center;">الإجمالي: {total} ريال</h3>
-        <p style="text-align: center; font-size: 10px;">شكراً لثقتكم</p>
     </div>
     """
 
@@ -32,20 +31,28 @@ def show_printable_invoice(item, qty, price, dept):
 st.sidebar.title("🛠️ لوحة تحكم غسق")
 page = st.sidebar.radio("الخدمات", ["📊 المبيعات اليومية", "🛒 نقطة البيع (POS)", "📦 إدارة المخزون"])
 
-# --- الصفحة 1: المبيعات (بدون أرباح) ---
+# --- الصفحة 1: المبيعات ---
 if page == "📊 المبيعات اليومية":
     st.title("📊 حركة المبيعات اليومية")
-    st.info("سجل العمليات (لا يظهر التكاليف أو الأرباح)")
+    
     if not st.session_state.sales_history.empty:
         st.dataframe(st.session_state.sales_history, use_container_width=True)
+        
+        # إضافة زر التحميل هنا (دمجناه في مكانه الصحيح)
+        csv = st.session_state.sales_history.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 تحميل تقرير المبيعات (CSV)",
+            data=csv,
+            file_name=f"sales_report_{datetime.date.today()}.csv",
+            mime="text/csv"
+        )
     else:
-        st.write("لا توجد عمليات مسجلة اليوم.")
+        st.info("لا توجد عمليات مسجلة اليوم.")
 
 # --- الصفحة 2: نقطة البيع ---
 elif page == "🛒 نقطة البيع (POS)":
     st.title("🛒 نقطة البيع الموحدة")
     
-    # استخدام Tabs للفصل بين الصيدلية والمعمل
     tab1, tab2 = st.tabs(["💊 الصيدلية", "🧪 المعمل"])
 
     with tab1:
@@ -69,7 +76,6 @@ elif page == "🛒 نقطة البيع (POS)":
                 st.session_state.invoice_data = {"item": test_name, "qty": 1, "price": price_lab, "dept": "معمل"}
                 st.rerun()
 
-    # عرض الفاتورة فور صدورها
     if st.session_state.invoice_data:
         data = st.session_state.invoice_data
         st.markdown(show_printable_invoice(data['item'], data['qty'], data['price'], data['dept']), unsafe_allow_html=True)
