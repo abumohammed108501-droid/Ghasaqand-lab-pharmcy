@@ -5,104 +5,89 @@ import datetime
 from fpdf import FPDF
 
 # --- إعدادات النظام ---
-st.set_page_config(page_title="نظام غسق", layout="wide")
+st.set_page_config(page_title="غسق OS - النظام الاحترافي", layout="wide")
 
-# --- تهيئة الحالة ---
-if 'show_invoice' not in st.session_state:
-    st.session_state.show_invoice = False
+# --- الأمان (تسجيل الدخول) ---
+def check_password():
+    if 'password_correct' not in st.session_state:
+        st.session_state.password_correct = False
+    
+    if not st.session_state.password_correct:
+        pwd = st.sidebar.text_input("أدخل كلمة المرور:", type="password")
+        if st.sidebar.button("دخول"):
+            if pwd == "1234": # غير هذه الكلمة كما تشاء
+                st.session_state.password_correct = True
+                st.rerun()
+            else:
+                st.error("كلمة المرور خاطئة!")
+        return False
+    return True
 
-# --- تهيئة قاعدة البيانات ---
-def init_db():
-    conn = sqlite3.connect('ghasaq_os.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS sales 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, dept TEXT, item TEXT, qty REAL, price REAL)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS inventory 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT UNIQUE, quantity REAL, price REAL)''')
-    conn.commit()
-    conn.close()
-
-init_db()
+# --- تهيئة النظام ---
+init_db = lambda: [c.execute(f"CREATE TABLE IF NOT EXISTS {t}") for t in ["sales (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, dept TEXT, item TEXT, qty REAL, price REAL)", "inventory (id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT UNIQUE, quantity REAL, price REAL)"]]
+conn = sqlite3.connect('ghasaq_os.db')
+c = conn.cursor()
+c.execute("CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, dept TEXT, item TEXT, qty REAL, price REAL)")
+c.execute("CREATE TABLE IF NOT EXISTS inventory (id INTEGER PRIMARY KEY AUTOINCREMENT, item_name TEXT UNIQUE, quantity REAL, price REAL)")
+conn.commit(); conn.close()
 
 # --- الدوال البرمجية ---
-def add_to_inventory(name, qty, price):
-    conn = sqlite3.connect('ghasaq_os.db')
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO inventory (item_name, quantity, price) VALUES (?, ?, ?)", (name, qty, price))
-    except sqlite3.IntegrityError:
-        c.execute("UPDATE inventory SET quantity = quantity + ?, price = ? WHERE item_name = ?", (qty, price, name))
-    conn.commit()
-    conn.close()
-
-def process_sale(dept, item, qty):
+def process_sale(item, qty):
     conn = sqlite3.connect('ghasaq_os.db')
     c = conn.cursor()
     c.execute("SELECT quantity, price FROM inventory WHERE item_name = ?", (item,))
-    result = c.fetchone()
-    if result and result[0] >= qty:
-        new_qty = result[0] - qty
-        price = result[1]
-        c.execute("UPDATE inventory SET quantity = ? WHERE item_name = ?", (new_qty, item))
-        time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        c.execute("INSERT INTO sales (timestamp, dept, item, qty, price) VALUES (?, ?, ?, ?, ?)",
-                  (time, dept, item, qty, price))
-        conn.commit()
-        conn.close()
-        return True, "تم البيع بنجاح!", price
-    else:
-        conn.close()
-        return False, "عذراً: الصنف غير موجود أو الكمية غير كافية.", 0
+    res = c.fetchone()
+    if res and res[0] >= qty:
+        c.execute("UPDATE inventory SET quantity = quantity - ? WHERE item_name = ?", (qty, item))
+        c.execute("INSERT INTO sales (timestamp, dept, item, qty, price) VALUES (?, ?, ?, ?, ?)", (datetime.datetime.now().strftime("%Y-%m-%d"), "صيدلية", item, qty, res[1]))
+        conn.commit(); conn.close()
+        return True, res[1]
+    conn.close(); return False, 0
 
 def generate_pdf(item, qty, price):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="فاتورة صيدلية غسق", ln=True, align='C')
+    pdf.cell(200, 10, "صيدلية غسق - فاتورة", ln=True, align='C')
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt=f"الصنف: {item}", ln=True)
-    pdf.cell(200, 10, txt=f"الكمية: {qty}", ln=True)
-    pdf.cell(200, 10, txt=f"الإجمالي: {price * qty} ريال", ln=True)
-    pdf.cell(200, 10, txt=f"التاريخ: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True)
+    pdf.cell(200, 10, f"التاريخ: {datetime.datetime.now().strftime('%Y-%m-%d')}", ln=True)
+    pdf.cell(200, 10, f"الصنف: {item} | الكمية: {qty}", ln=True)
+    pdf.cell(200, 10, f"الإجمالي: {price * qty} ريال", ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
 # --- واجهة المستخدم ---
-st.sidebar.title("لوحة تحكم غسق")
-# نستخدم نصوصاً بسيطة جداً هنا لمنع أي خطأ
-page = st.sidebar.radio("الخدمات", ["المبيعات اليومية", "نقطة البيع", "إدارة المخزون"])
+if check_password():
+    page = st.sidebar.radio("الخدمات", ["المبيعات والتحليلات", "نقطة البيع", "إدارة المخزون"])
 
-if page == "المبيعات اليومية":
-    st.title("📊 حركة المبيعات اليومية")
-    conn = sqlite3.connect('ghasaq_os.db')
-    df = pd.read_sql_query("SELECT * FROM sales ORDER BY id DESC", conn)
-    conn.close()
-    st.dataframe(df, use_container_width=True)
+    if page == "المبيعات والتحليلات":
+        st.title("📊 المبيعات والتحليلات")
+        df = pd.read_sql_query("SELECT * FROM sales", sqlite3.connect('ghasaq_os.db'))
+        if not df.empty:
+            # الرسم البياني
+            daily_sales = df.groupby('timestamp')['price'].sum()
+            st.bar_chart(daily_sales)
+            st.dataframe(df, use_container_width=True)
+        else: st.info("لا توجد مبيعات بعد")
 
-elif page == "نقطة البيع":
-    st.title("🛒 نقطة البيع")
-    item = st.text_input("اسم الصنف")
-    qty = st.number_input("الكمية", 1)
-    if st.button("إتمام البيع"):
-        success, msg, price = process_sale("صيدلية", item, qty)
-        if success:
-            st.success(msg)
-            pdf_data = generate_pdf(item, qty, price)
-            st.download_button("📥 تحميل الفاتورة (PDF)", pdf_data, "invoice.pdf", "application/pdf")
-        else:
-            st.error(msg)
+    elif page == "نقطة البيع":
+        st.title("🛒 نقطة البيع")
+        item = st.text_input("اسم الصنف")
+        qty = st.number_input("الكمية", 1)
+        if st.button("إتمام البيع"):
+            success, price = process_sale(item, qty)
+            if success:
+                st.success("تم البيع بنجاح!")
+                st.download_button("📥 تحميل الفاتورة", generate_pdf(item, qty, price), "invoice.pdf")
+            else: st.error("الصنف غير متوفر أو غير موجود")
 
-elif page == "إدارة المخزون":
-    st.title("📦 إدارة المخزون")
-    with st.form("inventory_form"):
-        name = st.text_input("اسم الصنف")
-        qty = st.number_input("الكمية المضافة")
-        price = st.number_input("سعر الوحدة")
-        if st.form_submit_button("حفظ في المخزن"):
-            add_to_inventory(name, qty, price)
-            st.success("تم التحديث!")
-    
-    st.subheader("المخزون الحالي")
-    conn = sqlite3.connect('ghasaq_os.db')
-    stock_df = pd.read_sql_query("SELECT * FROM inventory", conn)
-    conn.close()
-    st.dataframe(stock_df)
+    elif page == "إدارة المخزون":
+        st.title("📦 إدارة المخزون")
+        # تنبيهات النواقص
+        df_inv = pd.read_sql_query("SELECT * FROM inventory", sqlite3.connect('ghasaq_os.db'))
+        low_stock = df_inv[df_inv['quantity'] < 5]
+        if not low_stock.empty:
+            st.warning("⚠️ تنبيه: هذه الأصناف أوشكت على النفاد:")
+            st.dataframe(low_stock)
+        
+        st.subheader("المخزون الحالي")
+        st.dataframe(df_inv)
