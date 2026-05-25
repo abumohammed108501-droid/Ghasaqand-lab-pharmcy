@@ -1,27 +1,19 @@
 import streamlit as st
 import pandas as pd
-from streamlit_webrtc import webrtc_streamer # مكتبة الكاميرا
-import av
+import os
+from datetime import datetime
 
 st.set_page_config(layout="wide")
-st.title("💊 نظام غسق - الطباعة والباركود المباشر")
+st.title("💊 نظام غسق الطبي")
 
-# قارئ الباركود عبر الكاميرا
-st.subheader("📷 قارئ الباركود المباشر")
-webrtc_streamer(key="barcode-scanner") 
-
-# نظام الطباعة (يفتح نافذة الطابعة في المتصفح)
-def print_invoice(total):
-    st.markdown(f"""
-        <script>
-            var printWindow = window.open('', '', 'height=400,width=600');
-            printWindow.document.write('<html><body><h1>صيدلية غسق</h1><p>الإجمالي: {total} ريال</p></body></html>');
-            printWindow.print();
-            printWindow.close();
-        </script>
-    """, unsafe_allow_html=True)
-
-# زر البيع مع أمر الطباعة
-if st.button("إتمام البيع والطباعة"):
-    print_invoice(500) # مثال تجريبي
-    st.success("تم إرسال الفاتورة للطابعة!")
+# زر بيع مبسط جداً بدون تعقيد الكاميرا
+with st.form("pos_form"):
+    barcode = st.text_input("امسح الباركود أو اكتب اسم الصنف")
+    qty = st.number_input("الكمية", 1)
+    # هذا الزر سيظهر الآن ولن يختفي
+    submitted = st.form_submit_button("إتمام البيع")
+    
+    if submitted:
+        st.success(f"تم تسجيل بيع {qty} من الصنف {barcode}")
+        # هنا سيظهر زر تحميل الفاتورة للطباعة
+        st.download_button("📥 تحميل الفاتورة للطباعة", data="فاتورة صيدلية غسق...", file_name="invoice.txt")
