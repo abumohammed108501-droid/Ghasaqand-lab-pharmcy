@@ -15,15 +15,28 @@ from bidi.algorithm import get_display
 from PIL import Image
 import datetime
 
-st.set_page_config(page_title="نظام غسق", layout="wide")
+# إعداد الصفحة
+st.set_page_config(page_title="نظام غسق الطبي", layout="wide")
 
-# تصحيح كود الـ CSS
+# كود الواجهة الطبية (تم دمجه بشكل سليم)
 st.markdown("""
     <style>
     .stApp { background-color: #F8FAFC; }
+    h1 { color: #0F172A !important; }
+    .metric-card {
+        background-color: white; 
+        padding: 20px; 
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-right: 5px solid #0EA5E9;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# تهيئة بسيطة للتأكد من عمل النظام
-st.title("نظام غسق الطبي")
-st.write("تم استعادة النظام بنجاح. النظام يعمل الآن.")
+# العنوان
+st.title("💊 نظام غسق الطبي")
+
+# إضافة بسيطة للتأكد من أن كل شيء يعمل
+st.markdown('<div class="metric-card">تم تفعيل النمط الطبي بنجاح!</div>', unsafe_allow_html=True)
+
+st.write("الآن النظام يعمل مع الواجهة المحسنة.")
